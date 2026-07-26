@@ -1,0 +1,38 @@
+name: Update data
+
+on:
+  schedule:
+    - cron: "30 21 * * *" # daily, after TCGCSV's ~20:00 UTC refresh
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: node scripts/build-catalog.mjs
+      # Incremental: only downloads images for products new to the index.
+      - run: node scripts/update-hashes.mjs
+      - name: Commit (amending the previous data commit to keep history small)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          if git diff --cached --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          if git log -1 --pretty=%s | grep -q "^Update data"; then
+            git commit --amend -m "Update data $(date -u +%F)"
+            git push --force
+          else
+            git commit -m "Update data $(date -u +%F)"
+            git push
+          fi
